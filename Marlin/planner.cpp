@@ -77,6 +77,7 @@ Planner planner;
 /**
  * A ring buffer of moves described in steps
  */
+millis_t Planner::time_fan_change  = 0 ; 
 block_t Planner::block_buffer[BLOCK_BUFFER_SIZE];
 volatile uint8_t Planner::block_buffer_head = 0,           // Index of the next block to be pushed
                  Planner::block_buffer_tail = 0;
@@ -154,6 +155,11 @@ float Planner::previous_speed[NUM_AXIS],
  */
 
 Planner::Planner() { init(); }
+millis_t Planner:: getFanChangeTime()
+{
+  return time_fan_change;
+
+}
 
 void Planner::init() {
   block_buffer_head = block_buffer_tail = 0;
@@ -400,11 +406,19 @@ void Planner::recalculate() {
  * Maintain fans, paste extruder pressure,
  */
 void Planner::check_axes_activity() {
+  static unsigned char fan_pwm_last  = 0 ;
   unsigned char axis_active[NUM_AXIS] = { 0 },
                 tail_fan_speed[FAN_COUNT];
 
   #if FAN_COUNT > 0
     for (uint8_t i = 0; i < FAN_COUNT; i++) tail_fan_speed[i] = fanSpeeds[i];
+
+		    if(fan_pwm_last!=tail_fan_speed[0])	 
+				{
+	    	   //SERIAL_PROTOCOLLN("fan pwm change"); 
+               fan_pwm_last = tail_fan_speed[0];
+			   time_fan_change = millis() ;
+		    }
   #endif
 
   #if ENABLED(BARICUDA)
@@ -716,13 +730,17 @@ void Planner::_buffer_line(const float &a, const float &b, const float &c, const
         de = 0; // no difference
         SERIAL_ECHO_START;
         SERIAL_ECHOLNPGM(MSG_ERR_COLD_EXTRUDE_STOP);
+        #ifdef TFTmodel
+        NEW_SERIAL_PROTOCOLPGM("J13");//j13ok MSG_ERR_COLD_EXTRUDE_STOP
+        TFT_SERIAL_ENTER();
+        #endif
       }
       #if ENABLED(PREVENT_LENGTHY_EXTRUDE)
         if (labs(de) > (int32_t)axis_steps_per_mm[E_AXIS_N] * (EXTRUDE_MAXLENGTH)) { // It's not important to get max. extrusion length in a precision < 1mm, so save some cycles and cast to int
           position[E_AXIS] = target[E_AXIS]; // Behave as if the move really took place, but ignore E part
           de = 0; // no difference
           SERIAL_ECHO_START;
-          SERIAL_ECHOLNPGM(MSG_ERR_LONG_EXTRUDE_STOP);
+          SERIAL_ECHOLNPGM(MSG_ERR_LONG_EXTRUDE_STOP);       
         }
       #endif
     }
@@ -1381,6 +1399,7 @@ void Planner::_set_position_mm(const float &a, const float &b, const float &c, c
   previous_nominal_speed = 0.0; // Resets planner junction speeds. Assumes start from rest.
   ZERO(previous_speed);
 }
+
 
 void Planner::set_position_mm_kinematic(const float position[NUM_AXIS]) {
   #if PLANNER_LEVELING

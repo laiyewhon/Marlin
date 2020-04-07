@@ -28,6 +28,43 @@
 void Config_ResetDefault();
 void Config_StoreSettings();
 
+
+#ifdef OutageTest
+
+static bool RestartFlag=false;
+void OutageSave();
+void OutageRead();
+extern float last_position[4];
+extern long last_sd_position[1];
+#endif
+void SaveMyZoffset();
+void ReadMyZoffset();
+extern float Current_z_offset;
+//extern float last_z_offset[1];
+extern float last_z_offset;
+extern unsigned char FirstBootFlag;
+void SaveFirstBootFlag();
+void readFirstBootFlag();
+
+extern float Current_z_offset;
+//extern float last_z_offset[1];
+
+
+extern unsigned char FirstBootFlag;
+void SaveFirstBootFlag();
+void readFirstBootFlag();
+
+
+
+
+
+
+
+
+
+
+
+
 #if DISABLED(DISABLE_M503)
   void Config_PrintSettings(bool forReplay=false);
 #else

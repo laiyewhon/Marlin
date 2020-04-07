@@ -36,7 +36,7 @@
  *
  */
 
-#define EEPROM_VERSION "V27"
+#define EEPROM_VERSION "V29"
 
 // Change EEPROM version if these are changed:
 #define EEPROM_OFFSET 100
@@ -128,12 +128,23 @@
 #include "ultralcd.h"
 #include "configuration_store.h"
 
+#include "cardreader.h"
+
 #if ENABLED(MESH_BED_LEVELING)
   #include "mesh_bed_leveling.h"
 #endif
 
 uint16_t eeprom_checksum;
 const char version[4] = EEPROM_VERSION;
+
+
+
+
+
+
+
+
+
 
 void _EEPROM_writeData(int &pos, uint8_t* value, uint8_t size) {
   uint8_t c;
@@ -193,6 +204,11 @@ void Config_Postprocess() {
   #define EEPROM_SKIP(VAR) eeprom_index += sizeof(VAR)
   #define EEPROM_WRITE(VAR) _EEPROM_writeData(eeprom_index, (uint8_t*)&VAR, sizeof(VAR))
   #define EEPROM_READ(VAR) _EEPROM_readData(eeprom_index, (uint8_t*)&VAR, sizeof(VAR))
+
+
+  #define EEPROM_WRITE_VAR(pos, value) _EEPROM_writeData(pos, (uint8_t*)&value, sizeof(value))
+  #define EEPROM_READ_VAR(pos, value) _EEPROM_readData(pos, (uint8_t*)&value, sizeof(value))
+  
 
   /**
    * M500 - Store Configuration
@@ -1030,5 +1046,102 @@ void Config_ResetDefault() {
       SERIAL_EOL;
     #endif
   }
+
+
+
+#ifdef OutageTest
+float last_position[4]={0.0,0.0,0.0,0.0};
+long last_sd_position[1]={0};
+//extern float MYfeedrate_mm_s;
+void OutageSave()
+{
+  char ver[4]="000";
+  int j=20;
+  EEPROM_WRITE_VAR(j,ver);
+  last_sd_position[0]=card.GetLastSDpos();
+  last_position[0]=current_position[E_AXIS];
+  last_position[1]=current_position[Z_AXIS];
+  last_position[2]=current_position[Y_AXIS];
+  last_position[3]=current_position[X_AXIS]; 
+  
+  EEPROM_WRITE_VAR(j,last_sd_position[0]);
+  EEPROM_WRITE_VAR(j,last_position[0]); //E 
+  EEPROM_WRITE_VAR(j,last_position[1]); //Z
+  EEPROM_WRITE_VAR(j,last_position[2]); //Y
+  EEPROM_WRITE_VAR(j,last_position[3]);  //X
+//  EEPROM_WRITE_VAR(j,MYfeedrate_mm_s);
+  
+
+  
+}
+
+
+void OutageRead()
+{
+    int i=20;
+    char stored_ver[4];
+    char ver[4]=EEPROM_VERSION; 
+    EEPROM_READ_VAR(i,stored_ver);  
+    EEPROM_READ_VAR(i,last_sd_position[0]);  
+    EEPROM_READ_VAR(i,last_position[0]); //E
+    EEPROM_READ_VAR(i,last_position[1]); //Z
+    EEPROM_READ_VAR(i,last_position[2]); //Y
+    EEPROM_READ_VAR(i,last_position[3]); //X
+//	EEPROM_READ_VAR(i,MYfeedrate_mm_s);  
+	
+
+   /* 
+    SERIAL_ECHOPAIR(" MYx",last_position[3]);
+    SERIAL_ECHOPAIR(" MYy",last_position[2]);
+    SERIAL_ECHOPAIR(" MYz",last_position[1]);
+    SERIAL_ECHOPAIR(" MYe",last_position[0]);
+  */	
+
+}
+
+#endif
+
+unsigned char FirstBootFlag;
+#define bootEEPROM_OFFSET 85
+void SaveFirstBootFlag()
+{
+  char ver[4]="000";
+  int j=bootEEPROM_OFFSET;
+  FirstBootFlag=0x5a;
+  EEPROM_WRITE_VAR(j,ver);
+  EEPROM_WRITE_VAR(j,FirstBootFlag);
+}
+void readFirstBootFlag()
+{
+    int i=bootEEPROM_OFFSET;
+    char stored_ver[4];
+    char ver[4]=EEPROM_VERSION; 
+    EEPROM_READ_VAR(i,stored_ver); 
+    EEPROM_READ_VAR(i,FirstBootFlag);
+}
+
+#define zEEPROM_OFFSET 50
+//float last_z_offset[1]={0.0};
+float last_z_offset=0;
+void SaveMyZoffset()
+{
+  char ver[4]="000";
+  int j=zEEPROM_OFFSET;
+  last_z_offset=Current_z_offset;
+  EEPROM_WRITE_VAR(j,ver);
+  EEPROM_WRITE_VAR(j,last_z_offset);
+  
+
+}
+void ReadMyZoffset()
+{
+    int i=zEEPROM_OFFSET;
+    char stored_ver[4];
+    char ver[4]=EEPROM_VERSION; 
+    EEPROM_READ_VAR(i,stored_ver); 
+    EEPROM_READ_VAR(i,last_z_offset);   
+		
+}
+
 
 #endif // !DISABLE_M503

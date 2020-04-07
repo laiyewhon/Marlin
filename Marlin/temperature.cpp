@@ -25,6 +25,7 @@
  */
 
 #include "Marlin.h"
+#include "planner.h"
 #include "ultralcd.h"
 #include "temperature.h"
 #include "thermistortables.h"
@@ -549,7 +550,7 @@ float Temperature::get_pid_output(int e) {
       }
       else {
         if (pid_reset[HOTEND_INDEX]) {
-          temp_iState[HOTEND_INDEX] = 0.0;
+          //temp_iState[HOTEND_INDEX] = 0.0;//2019.4.17
           pid_reset[HOTEND_INDEX] = false;
         }
         pTerm[HOTEND_INDEX] = PID_PARAM(Kp, HOTEND_INDEX) * pid_error[HOTEND_INDEX];
@@ -668,9 +669,13 @@ void Temperature::manage_heater() {
 
   updateTemperaturesFromRawValues(); // also resets the watchdog
 
+  
+
   #if ENABLED(HEATER_0_USES_MAX6675)
-    if (current_temperature[0] > min(HEATER_0_MAXTEMP, MAX6675_TMAX - 1)) max_temp_error(0);
-    if (current_temperature[0] < max(HEATER_0_MINTEMP, MAX6675_TMIN + 0.01)) min_temp_error(0);
+    if (current_temperature[0] > min(HEATER_0_MAXTEMP, MAX6675_TMAX - 1)){NEW_SERIAL_PROTOCOLPGM("J10");TFT_SERIAL_ENTER(); // SEND MESSAGE TO TFT
+    max_temp_error(0);}
+    if (current_temperature[0] < max(HEATER_0_MINTEMP, MAX6675_TMIN + 0.01)) {NEW_SERIAL_PROTOCOLPGM("J10");TFT_SERIAL_ENTER(); // SEND MESSAGE TO TFT 
+    min_temp_error(0);}
   #endif
 
   #if (ENABLED(THERMAL_PROTECTION_HOTENDS) && WATCH_TEMP_PERIOD > 0) || (ENABLED(THERMAL_PROTECTION_BED) && WATCH_BED_TEMP_PERIOD > 0) || DISABLED(PIDTEMPBED) || HAS_AUTO_FAN
@@ -679,6 +684,7 @@ void Temperature::manage_heater() {
 
   // Loop through all hotends
   HOTEND_LOOP() {
+
 
     #if ENABLED(THERMAL_PROTECTION_HOTENDS)
       thermal_runaway_protection(&thermal_runaway_state_machine[e], &thermal_runaway_timer[e], current_temperature[e], target_temperature[e], e, THERMAL_PROTECTION_PERIOD, THERMAL_PROTECTION_HYSTERESIS);
@@ -697,6 +703,8 @@ void Temperature::manage_heater() {
         // Has it failed to increase enough?
         if (degHotend(e) < watch_target_temp[e]) {
           // Stop!
+          //SERIAL_PROTOCOLLN(" ***fuck heating fail ************* ");
+          NEW_SERIAL_PROTOCOLPGM("J10");TFT_SERIAL_ENTER(); // SEND MESSAGE TO TFT 
           _temp_error(e, PSTR(MSG_T_HEATING_FAILED), PSTR(MSG_HEATING_FAILED_LCD));
         }
         else {
@@ -1172,9 +1180,13 @@ void Temperature::init() {
     if (degHotend(HOTEND_INDEX) < degTargetHotend(HOTEND_INDEX) - (WATCH_TEMP_INCREASE + TEMP_HYSTERESIS + 1)) {
       watch_target_temp[HOTEND_INDEX] = degHotend(HOTEND_INDEX) + WATCH_TEMP_INCREASE;
       watch_heater_next_ms[HOTEND_INDEX] = millis() + (WATCH_TEMP_PERIOD) * 1000UL;
+	  //SERIAL_PROTOCOLLN(" *** watching heat up ************* ");
     }
     else
-      watch_heater_next_ms[HOTEND_INDEX] = 0;
+    	{
+    	//SERIAL_PROTOCOLLN(" *** heat up over ************* ");
+         watch_heater_next_ms[HOTEND_INDEX] = 0;
+    	}
   }
 #endif
 
@@ -1209,6 +1221,9 @@ void Temperature::init() {
   void Temperature::thermal_runaway_protection(Temperature::TRState* state, millis_t* timer, float temperature, float target_temperature, int heater_id, int period_seconds, int hysteresis_degc) {
 
     static float tr_target_temperature[HOTENDS + 1] = { 0.0 };
+	static char reset_temperature_mark[HOTENDS + 1] = {0};
+	   static millis_t  timer_save[HOTENDS + 1] = {0};
+	   	 millis_t  ltemp  = 0;
 
     /**
         SERIAL_ECHO_START;
@@ -1227,6 +1242,9 @@ void Temperature::init() {
     if (tr_target_temperature[heater_index] != target_temperature) {
       tr_target_temperature[heater_index] = target_temperature;
       *state = target_temperature > 0 ? TRFirstHeating : TRInactive;
+	  reset_temperature_mark[heater_index] = 1; 
+	  //SERIAL_PROTOCOLLN(" **********reset delay*************");	
+
     }
 
     switch (*state) {
@@ -1234,18 +1252,58 @@ void Temperature::init() {
       case TRInactive: break;
       // When first heating, wait for the temperature to be reached then go to Stable state
       case TRFirstHeating:
+	  	if (temperature >= (tr_target_temperature[heater_index]- (WATCH_TEMP_INCREASE + TEMP_HYSTERESIS + 1)))watch_heater_next_ms[HOTEND_INDEX] = 0;
         if (temperature < tr_target_temperature[heater_index]) break;
         *state = TRStable;
       // While the temperature is stable watch for a bad temperature
       case TRStable:
+	  
+	  	ltemp =  millis() ;
+	  	
+           if (temperature < tr_target_temperature[heater_index] ) {
+			if(reset_temperature_mark[heater_index]==1 && heater_index == 0)
+				 {
+					 timer_save[heater_index] = ltemp +60000;  
+					 reset_temperature_mark[heater_index]=0;
+					//SERIAL_PROTOCOL(" start delay ");	SERIAL_PROTOCOL(timer_save[heater_index]/1000)		;SERIAL_PROTOCOL("\r\n");	
+				 }
+				 
+}
+
+			
+			
+
+							   
         if (temperature >= tr_target_temperature[heater_index] - hysteresis_degc) {
           *timer = millis() + period_seconds * 1000UL;
-          break;
+		            break;
         }
-        else if (PENDING(millis(), *timer)) break;
+        else{
+
+			if(ltemp < timer_save[heater_index]||ltemp - planner.getFanChangeTime()<60000)
+		   {
+			 
+			 
+		    //SERIAL_PROTOCOL(" *** delay ");	SERIAL_PROTOCOL(ltemp/1000)	; SERIAL_PROTOCOL("  ");SERIAL_PROTOCOL(timer_save[heater_index]/1000);SERIAL_PROTOCOL("\r\n");	
+		   *timer = ltemp + period_seconds * 1000UL;
+		    break;
+	       }
+			if (PENDING(millis(), *timer))
+				{
+					//SERIAL_PROTOCOL(" *** ready runaway error ");	SERIAL_PROTOCOL(ltemp/1000)	; SERIAL_PROTOCOL("  ");SERIAL_PROTOCOL((*timer)/1000);SERIAL_PROTOCOL("\r\n");	
+		 
+				break;
+
+				}
+
+        	}
         *state = TRRunaway;
       case TRRunaway:
-        _temp_error(heater_id, PSTR(MSG_T_THERMAL_RUNAWAY), PSTR(MSG_THERMAL_RUNAWAY));
+      {
+        NEW_SERIAL_PROTOCOLPGM("J10");TFT_SERIAL_ENTER(); // SEND MESSAGE TO TFT 
+		//SERIAL_PROTOCOLLN(" ***wocao wocao wocao************* ");	
+        _temp_error(heater_id, PSTR(MSG_T_THERMAL_RUNAWAY), PSTR(MSG_THERMAL_RUNAWAY));        
+      }
     }
   }
 
@@ -1893,12 +1951,14 @@ void Temperature::isr() {
 
     for (uint8_t e = 0; e < COUNT(temp_dir); e++) {
       const int tdir = temp_dir[e], rawtemp = current_temperature_raw[e] * tdir;
-      if (rawtemp > maxttemp_raw[e] * tdir && target_temperature[e] > 0.0f) max_temp_error(e);
+      if (rawtemp > maxttemp_raw[e] * tdir && target_temperature[e] > 0.0f){NEW_SERIAL_PROTOCOLPGM("J10");TFT_SERIAL_ENTER();  max_temp_error(e);}//2019.4.19
       if (rawtemp < minttemp_raw[e] * tdir && !is_preheating(e) && target_temperature[e] > 0.0f) {
         #ifdef MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED
           if (++consecutive_low_temperature_error[e] >= MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED)
         #endif
-            min_temp_error(e);
+		NEW_SERIAL_PROTOCOLPGM("J10");TFT_SERIAL_ENTER(); // SEND MESSAGE TO TFT // 2019.4.19
+
+		min_temp_error(e);
       }
       #ifdef MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED
         else
